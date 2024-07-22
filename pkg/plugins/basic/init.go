@@ -15,7 +15,4 @@ func load(e lsha.ModeRepository) {
 		PlayerMinCount: 2,
 		PlayerMaxCount: 2,
 	})
-	mb.OnStart(func(ctx lsha.Context, config any) lsha.Mode {
-
-	})
 }

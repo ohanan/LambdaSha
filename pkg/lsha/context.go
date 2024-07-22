@@ -2,39 +2,37 @@ package lsha
 
 type Context interface {
 	RuntimeContext
-	WithValue(key string, value any) Context
-	WithValues(values map[string]any) Context
-	GetValue(key string) (value any, ok bool)
-	VisitAllValues(key string, callback func(v any) (willContinue bool))
+	WithEvent(event Event) Context
+	Event() Event
 }
 type RuntimeContext interface {
-	GetUsers() []User
-	GetModeConfig() ModeConfig
-	GetMode() Mode
-	GetCurrentTurn() Turn
+	BindData(data any)
+	Data() any
+	Users() []User
+	RoomConfig() ConfigBuilder
+	RuntimeConfig() ConfigBuilder
+	Turn() Turn
+	AddTrigger(trigger Trigger, eventNames ...string) (id uint64)
+	RemoveTrigger(id uint64)
+}
+type DataHolder interface {
+	BindData(data any)
+	Data() any
 }
 
-func Value[V any](c Context, key string) (value V, ok bool) {
-	v, ok := c.GetValue(key)
-	if !ok {
-		return
+func Data[V any](c DataHolder) (_ V) {
+	if v := c.Data(); v != nil {
+		if v, ok := v.(V); ok {
+			return v
+		}
 	}
-	value, ok = v.(V)
 	return
 }
-func Visit[V any](c Context, key string, callback func(v V) (willContinue bool)) {
-	c.VisitAllValues(key, func(v any) bool {
-		if vv, ok := v.(V); ok {
-			return callback(vv)
+func TurnData[V any](ctx Context) (_ V) {
+	if v := ctx.Turn(); v != nil {
+		if v, ok := v.(V); ok {
+			return v
 		}
-		return true
-	})
-}
-func VisitAll[V any](c Context, key string, callback func(v V)) {
-	c.VisitAllValues(key, func(v any) bool {
-		if vv, ok := v.(V); ok {
-			callback(vv)
-		}
-		return true
-	})
+	}
+	return
 }

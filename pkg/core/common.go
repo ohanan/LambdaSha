@@ -16,3 +16,7 @@ func firstNotNil[T any](a []*T) (int, *T) {
 	}
 	return -1, nil
 }
+
+func ptr[V any](v V) *V {
+	return &v
+}

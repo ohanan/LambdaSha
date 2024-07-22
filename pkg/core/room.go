@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"github.com/ohanan/LambdaSha/pkg/core/form"
 )
 
 const defaultMaxPlayerCount = 32
@@ -35,7 +37,8 @@ type Room struct {
 	owner      atomic.Pointer[User]
 	players    atomic.Pointer[[]*User]
 	spectators atomic.Pointer[[]*User]
-	config     atomic.Pointer[any]
+	config     atomic.Pointer[form.ItemsBuilder]
+	ctx        atomic.Pointer[runtimeContext]
 	sync.RWMutex
 
 	h *Handler
@@ -174,8 +177,50 @@ func (r *Room) ResetConfig() {
 	defer r.Unlock()
 	r.config.Store(r.mode.Load().createConfigPointer())
 }
-func (r *Room) GetConfig() {
-
+func (r *Room) GetConfig(user *User) []*form.Item {
+	return (*r.config.Load()).Build(r.owner.Load().ID() != user.ID())
+}
+func (r *Room) Start() error {
+	r.Lock()
+	defer r.Unlock()
+	mode := r.mode.Load()
+	currentPlayerCnt := len(*r.players.Load())
+	if mode.limit != nil {
+		if currentPlayerCnt < mode.limit.PlayerMinCount {
+			return fmt.Errorf("not enough players, expected: %d, got: %d", mode.limit.PlayerMinCount, currentPlayerCnt)
+		}
+	}
+	ctx := newContext(r.config.Load(), r.players.Load())
+	go r.run(ctx, mode)
+	return nil
+}
+func (r *Room) run(ctx *Context, mode *modeBuilder) {
+	ctx.data.Store(ptr(mode.start(ctx)))
+	for {
+		lastTurn := ctx.turn.Load()
+		tb := &TurnBuilder{}
+		turn := &Turn{}
+		turn.data = mode.nextTurn(ctx, tb)
+		if tb.player == nil {
+			return
+		}
+		turn.player = tb.player
+		turn.round = tb.round
+		if turn.round == 0 {
+			turn.round = lastTurn.round + 1
+		}
+		ctx.turn.Store(turn)
+		for {
+			pb := &PhaseBuilder{}
+			phase := &Phase{}
+			phase.data = tb.nextPhase(ctx, pb)
+			if pb.name == "" {
+				break
+			}
+			phase.name = pb.name
+			turn.phase = phase
+		}
+	}
 }
 
 func (r *Room) mustBeOwner(user *User) error {
@@ -205,4 +250,3 @@ type UserRoomInfo struct {
 	isSpectator atomic.Bool
 	sync.Mutex
 }
-

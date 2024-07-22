@@ -176,56 +176,6 @@ func (h *Handler) EnterRoom(user *User, roomID int64) (*Room, error) {
 	}
 	return room, nil
 }
-func (h *Handler) RunMode(modeName string, accounts []lsha.User) error {
-	mb, ok := h.modeBuilders[modeName]
-	if !ok {
-		return errors.New("mode definition not found: " + modeName)
-	}
-	limit := mb.limit
-	if limit.UserValidator != nil {
-		filtered := make([]lsha.User, 0, len(accounts))
-		for _, account := range accounts {
-			if limit.UserValidator(account)
-		}
-	}
-	if len(accounts) < limit.PlayerMinCount {
-		return errors.New("too less players")
-	}
-	if limit.PlayerMaxCount > 0 && len(accounts) > limit.PlayerMaxCount {
-		accounts = accounts[:limit.PlayerMaxCount]
-	}
-	ctx := newContext()
-	if mb.createConfigFunc != nil {
-		ctx.config = mb.createConfigFunc()
-		h.AskConfig(ctx.config)
-	}
-	ctx.mode = mb.start(ctx, accounts)
-	for {
-		tb := &TurnBuilder{}
-		mb.nextTurn(ctx, tb)
-		ctx.currentTurn =
-	}
-	for _, player := range mode.Players() {
-		player.Invoke(&lsha.GameStartedEvent{})
-	}
-	var round int
-	for p, newRound := mode.NextPlayer(); p != nil; p, newRound = mode.NextPlayer() {
-		if newRound {
-			round++
-		}
-		turn := mode.NewTurn(round, p)
-		for phase := turn.NextPhase(); phase != nil; phase = turn.NextPhase() {
-
-			if mode.IsOver() {
-				break
-			}
-		}
-	}
-}
-
-func (h *Handler) AskConfig(config any) {
-
-}
 
 func (h *Handler) BuildMode(name string) lsha.ModeBuilder {
 	if _, ok := h.modeBuilders[name]; ok {

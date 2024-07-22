@@ -1,10 +1,5 @@
 package lsha
 
-import (
-	"sync"
-	"sync/atomic"
-)
-
 const (
 	EventNameGameStarting  = "system:game_starting"
 	EventNameGameStarted   = "system:game_started"
@@ -17,26 +12,19 @@ const (
 	EventNameTurnEnd       = "system:turn_end"
 )
 
+type (
+	Invoker = func(ctx Context, result InvokeResult)
+)
 type Event interface {
 	Name() string
 }
-type EventManager interface {
-	AddTrigger(trigger Trigger) (id uint64)
-	RemoveTrigger(id uint64)
-	GetTrigger(id uint64)
-	Invoke(event Event)
-}
 type Trigger interface {
-	TriggerMeta
-	RawInvoke(event Event, result TriggerResult)
-}
-type TriggerMeta interface {
-	ID() uint64
 	Name() string
 	EventName() string
 	Priority() float64
+	Invoke(ctx Context, result InvokeResult)
 }
-type TriggerResult interface {
+type InvokeResult interface {
 	FastStop()
 }
 
@@ -67,45 +55,3 @@ func (e *TurnHarvestEvent) Name() string   { return EventNameTurnHarvest }
 func (e *TurnPlayEvent) Name() string      { return EventNameTurnPlay }
 func (e *TurnPostCheckEvent) Name() string { return EventNameTurnPostCheck }
 func (e *TurnEndEvent) Name() string       { return EventNameTurnEnd }
-
-type triggerManager struct {
-	nextID   uint64
-	triggers sync.Map
-}
-
-func (m *triggerManager) AddTrigger(trigger Trigger) (id uint64) {
-	if trigger == nil {
-		return
-	}
-	id = atomic.AddUint64(&m.nextID, 1)
-	m.triggers.Store(id, trigger)
-	return id
-}
-
-func (m *triggerManager) RemoveTrigger(id uint64) {
-	m.triggers.Delete(id)
-}
-
-func (m *triggerManager) GetTrigger(id uint64) (Trigger, bool) {
-	if id == 0 {
-		return nil, false
-	}
-	v, ok := m.triggers.Load(id)
-	if !ok {
-		return nil, false
-	}
-	return v.(Trigger), true
-}
-
-func (m *triggerManager) Invoke(event Event) {
-	if event == nil {
-		return
-	}
-	m.triggers.Range(func(key, value any) bool {
-		trigger := value.(Trigger)
-		if trigger.EventName() == event.Name() {
-			trigger.RawInvoke(event, nil)
-		}
-		return true
-	})
-}

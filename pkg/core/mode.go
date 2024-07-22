@@ -1,24 +1,25 @@
 package core
 
 import (
+	"github.com/ohanan/LambdaSha/pkg/core/form"
 	"github.com/ohanan/LambdaSha/pkg/lsha"
 )
 
 type modeBuilder struct {
-	name             string
-	limit            *lsha.ModeLimit
-	description      string
-	createConfigFunc lsha.FuncModeCreateConfig
-	start            lsha.FuncModeStart
-	nextTurn         lsha.FuncModeNextTurn
+	name            string
+	limit           *lsha.ModeLimit
+	description     string
+	buildConfigFunc lsha.ModeRoomConfigBuilder
+	start           lsha.ModeStarter
+	nextTurn        lsha.TurnStarter
 }
 
-func (b *modeBuilder) createConfigPointer() *any {
-	if b.createConfigFunc != nil {
-		c := b.createConfigFunc()
-		return &c
+func (b *modeBuilder) createConfigPointer() *form.ItemsBuilder {
+	v := &form.ItemsBuilder{}
+	if b.buildConfigFunc != nil {
+		b.buildConfigFunc(v)
 	}
-	return nil
+	return v
 }
 func (b *modeBuilder) validateUser(user *User) (reason string) {
 	l := b.limit
@@ -61,15 +62,15 @@ func (b *modeBuilder) Limit(limit *lsha.ModeLimit) {
 	b.limit = limit
 }
 
-func (b *modeBuilder) OnCreateConfig(f lsha.FuncModeCreateConfig) {
-	b.createConfigFunc = f
+func (b *modeBuilder) OnCreateConfig(f lsha.ModeRoomConfigBuilder) {
+	b.buildConfigFunc = f
 }
 
-func (b *modeBuilder) OnStart(f lsha.FuncModeStart) {
+func (b *modeBuilder) OnStart(f lsha.ModeStarter) {
 	b.start = f
 }
 
-func (b *modeBuilder) OnNextTurn(f lsha.FuncModeNextTurn) {
+func (b *modeBuilder) OnNextTurn(f lsha.TurnStarter) {
 	b.nextTurn = f
 }
 func (b *modeBuilder) WithModeRegistration(f func(registration lsha.ModeRegistration)) {
