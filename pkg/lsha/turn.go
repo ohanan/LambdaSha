@@ -14,6 +14,5 @@ type Turn interface {
 type TurnBuilder interface {
 	Player(p Player) TurnBuilder
 	Round(n int) TurnBuilder
-	OnStart(starter TurnStarter) TurnBuilder
 	OnNextPhase(phaseStarter PhaseStarter) TurnBuilder
 }

@@ -1,16 +1,19 @@
-package core
+package service
 
 import (
 	"fmt"
 	"sync"
 	"sync/atomic"
 
+	"github.com/ohanan/LambdaSha/pkg/core"
+	"github.com/ohanan/LambdaSha/pkg/core/common"
 	"github.com/ohanan/LambdaSha/pkg/core/form"
+	"github.com/ohanan/LambdaSha/pkg/lsha"
 )
 
 const defaultMaxPlayerCount = 32
 
-func NewRoom(id int64, user *User, e *Handler, mode *modeBuilder) *Room {
+func NewRoom(id int64, user *User, e *Handler, mode core.BuiltMode) *Room {
 	r := &Room{
 		id: id,
 		h:  e,
@@ -19,26 +22,28 @@ func NewRoom(id int64, user *User, e *Handler, mode *modeBuilder) *Room {
 		_ = rr.Leave(user)
 	}
 	defer user.roomInfo.room.Store(r)
-	r.config.Store(mode.createConfigPointer())
-	r.mode.Store(mode)
+	r.mode.Store(&mode)
+	r.resetConfigForMode(mode)
 	r.owner.Store(user)
-	users := make([]*User, mode.getMaxPlayerCount())
+	_, maxPlayer := mode.GetPlayerCountLimit()
+	users := make([]*User, maxPlayer)
 	users[0] = user
-	r.players.Store(&users)
+	r.users.Store(&users)
 	spectators := make([]*User, 0, defaultMaxPlayerCount)
 	r.spectators.Store(&spectators)
 	return r
 }
 
 type Room struct {
-	id         int64
-	name       atomic.Pointer[string]
-	mode       atomic.Pointer[modeBuilder]
-	owner      atomic.Pointer[User]
-	players    atomic.Pointer[[]*User]
-	spectators atomic.Pointer[[]*User]
-	config     atomic.Pointer[form.ItemsBuilder]
-	ctx        atomic.Pointer[runtimeContext]
+	id              int64
+	name            atomic.Pointer[string]
+	mode            atomic.Pointer[core.BuiltMode]
+	ownerReadConfig atomic.Pointer[[]*form.Item]
+	configFactory   atomic.Pointer[func(readonly bool) []*form.Item]
+	configData      atomic.Pointer[any]
+	owner           atomic.Pointer[User]
+	users           atomic.Pointer[[]*User]
+	spectators      atomic.Pointer[[]*User]
 	sync.RWMutex
 
 	h *Handler
@@ -56,11 +61,11 @@ func (r *Room) Enter(user *User) error {
 	}
 	r.Lock()
 	defer r.Unlock()
-	m := r.mode.Load()
-	if reason := m.validateUser(user); reason != "" {
+	m := *r.mode.Load()
+	if reason := m.ValidateUser(user); reason != "" {
 		return r.addToSpectators(user)
 	}
-	players := *r.players.Load()
+	players := *r.users.Load()
 	for i, player := range players {
 		if player == nil {
 			players[i] = user
@@ -97,14 +102,14 @@ func (r *Room) Leave(user *User) error {
 			}
 		}
 	}
-	players := *r.players.Load()
-	for i, player := range players { // remove user from players
+	players := *r.users.Load()
+	for i, player := range players { // remove user from users
 		if player != nil && player.id == user.id {
 			players[i] = nil
 			break
 		}
 	}
-	idx, firstUser := firstNotNil(players)
+	idx, firstUser := common.FirstNotNil(players)
 	if idx < 0 {
 		r.h.rooms.Delete(r.id)
 		return nil
@@ -128,16 +133,16 @@ func (r *Room) SetMode(user *User, modeName string) (err error) {
 	if err = r.mustBeOwner(user); err != nil {
 		return err
 	}
-	curr := r.mode.Load()
-	if curr.name == mode.name {
+	curr := *r.mode.Load()
+	if curr.GetName() == mode.GetName() {
 		return nil
 	}
-	defer r.mode.Store(mode)
-	r.config.Store(mode.createConfigPointer())
-	players := *r.players.Load()
-	newSize := mode.getMaxPlayerCount()
+	defer r.mode.Store(&mode)
+	r.resetConfigForMode(mode)
+	players := *r.users.Load()
+	_, newSize := mode.GetPlayerCountLimit()
 	newPlayers := make([]*User, newSize)
-	r.players.Store(&newPlayers)
+	r.users.Store(&newPlayers)
 	if len(players) < newSize {
 		copy(newPlayers, players)
 		return nil
@@ -175,52 +180,47 @@ func (r *Room) SetMode(user *User, modeName string) (err error) {
 func (r *Room) ResetConfig() {
 	r.Lock()
 	defer r.Unlock()
-	r.config.Store(r.mode.Load().createConfigPointer())
+	r.resetConfigForMode(*r.mode.Load())
 }
+func (r *Room) resetConfigForMode(m core.BuiltMode) {
+	data, creator := m.CreateConfigBuilder()
+	r.configData.Store(&data)
+	r.configFactory.Store(&creator)
+}
+
 func (r *Room) GetConfig(user *User) []*form.Item {
-	return (*r.config.Load()).Build(r.owner.Load().ID() != user.ID())
+	ownerReadConfig := r.owner.Load().ID() != user.ID()
+	items := (*r.configFactory.Load())(ownerReadConfig)
+	if ownerReadConfig {
+		r.ownerReadConfig.Store(&items)
+	}
+	return items
+}
+func (r *Room) UpdateConfig(user *User, updateContent map[string]any) error {
+	if err := r.mustBeOwner(user); err != nil {
+		return err
+	}
+	ownerReadConfig := r.ownerReadConfig.Load()
+	if ownerReadConfig != nil {
+		form.UpdateItems(*ownerReadConfig, updateContent)
+	}
+	return nil
 }
 func (r *Room) Start() error {
 	r.Lock()
 	defer r.Unlock()
-	mode := r.mode.Load()
-	currentPlayerCnt := len(*r.players.Load())
-	if mode.limit != nil {
-		if currentPlayerCnt < mode.limit.PlayerMinCount {
-			return fmt.Errorf("not enough players, expected: %d, got: %d", mode.limit.PlayerMinCount, currentPlayerCnt)
-		}
+	mode := *r.mode.Load()
+	users := *r.users.Load()
+	minCount, _ := mode.GetPlayerCountLimit()
+	if currentPlayerCnt := len(users); currentPlayerCnt < minCount {
+		return fmt.Errorf("not enough users, expected: %d, got: %d", minCount, currentPlayerCnt)
 	}
-	ctx := newContext(r.config.Load(), r.players.Load())
-	go r.run(ctx, mode)
+	copiedUsers := make([]lsha.User, len(users))
+	for i, user := range users {
+		copiedUsers[i] = user
+	}
+	go mode.Run(*r.configData.Load(), copiedUsers)
 	return nil
-}
-func (r *Room) run(ctx *Context, mode *modeBuilder) {
-	ctx.data.Store(ptr(mode.start(ctx)))
-	for {
-		lastTurn := ctx.turn.Load()
-		tb := &TurnBuilder{}
-		turn := &Turn{}
-		turn.data = mode.nextTurn(ctx, tb)
-		if tb.player == nil {
-			return
-		}
-		turn.player = tb.player
-		turn.round = tb.round
-		if turn.round == 0 {
-			turn.round = lastTurn.round + 1
-		}
-		ctx.turn.Store(turn)
-		for {
-			pb := &PhaseBuilder{}
-			phase := &Phase{}
-			phase.data = tb.nextPhase(ctx, pb)
-			if pb.name == "" {
-				break
-			}
-			phase.name = pb.name
-			turn.phase = phase
-		}
-	}
 }
 
 func (r *Room) mustBeOwner(user *User) error {
@@ -232,16 +232,16 @@ func (r *Room) mustBeOwner(user *User) error {
 
 // addToSpectators add user to spectators, it is not goroutine safe.
 func (r *Room) addToSpectators(user *User) error {
-	atomicAppend(&r.spectators, user)
+	common.AtomicAppend(&r.spectators, user)
 	user.roomInfo.isSpectator.Store(true)
 	return nil
 }
 
 func (r *Room) doEnter(user *User) error {
 	user.roomInfo.room.Store(r)
-	ps := *r.players.Load()
+	ps := *r.users.Load()
 	ps = append(ps, user)
-	r.players.Store(&ps)
+	r.users.Store(&ps)
 	return nil
 }
 

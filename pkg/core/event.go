@@ -4,47 +4,22 @@ import (
 	"github.com/ohanan/LambdaSha/pkg/lsha"
 )
 
-type TriggerBuilder struct {
-	priority float64
-	invoker  func(event lsha.Event, result lsha.InvokeResult)
+type invokerResult struct {
 }
 
-func (t *TriggerBuilder) Priority(priority float64) lsha.TriggerBuilder {
-	t.priority = priority
-	return t
-}
-
-func (t *TriggerBuilder) OnInvoke(f func(event lsha.Event, result lsha.InvokeResult)) lsha.TriggerBuilder {
-	t.invoker = f
-	return t
-}
-
-type InvokerResult struct {
-}
-
-func (i *InvokerResult) FastStop() {
+func (i *invokerResult) FastStop() {
 }
 
 type Trigger struct {
-	id        uint64
-	name      string
-	eventName string
-	priority  float64
-	invoker   lsha.Invoker
+	id uint64
+	lsha.Trigger
+	player       lsha.Player
+	eventNameMap map[string]struct{}
 }
 
-func (t *Trigger) ID() uint64 {
-	return t.id
-}
-
-func (t *Trigger) Name() string {
-	return t.name
-}
-
-func (t *Trigger) EventName() string {
-	return t.eventName
-}
-
-func (t *Trigger) Priority() float64 {
-	return t.priority
+func (t *Trigger) getTriggerPlayerOrder() int {
+	if t.player == nil {
+		return -1
+	}
+	return t.player.Order()
 }

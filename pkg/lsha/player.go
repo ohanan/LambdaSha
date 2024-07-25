@@ -1,7 +1,9 @@
 package lsha
 
 type Player interface {
-	Account() User
+	DataHolder
+	Order() int
+	User() User
 	IsAlive() bool
 	Effects() Effect
 }

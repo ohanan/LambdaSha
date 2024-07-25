@@ -34,7 +34,6 @@ func (t *Turn) Phase() lsha.Phase {
 }
 
 type TurnBuilder struct {
-	starter   lsha.TurnStarter
 	round     int
 	player    lsha.Player
 	nextPhase lsha.PhaseStarter
@@ -42,11 +41,6 @@ type TurnBuilder struct {
 
 func (t *TurnBuilder) OnNextPhase(phaseStarter lsha.PhaseStarter) lsha.TurnBuilder {
 	t.nextPhase = phaseStarter
-	return t
-}
-
-func (t *TurnBuilder) OnStart(f lsha.TurnStarter) lsha.TurnBuilder {
-	t.starter = f
 	return t
 }
 

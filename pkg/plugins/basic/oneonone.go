@@ -2,16 +2,38 @@ package basic
 
 import "github.com/ohanan/LambdaSha/pkg/lsha"
 
-type OneOnOne struct {
+func initOneOnOne(mb lsha.ModeBuilder) {
+	mb.UserConfig(func(builder lsha.ModeUserConfigBuilder) {
+		builder.MaxPlayer(2).MinPlayer(2)
+	}).ModeRegistration(func(registration lsha.ModeRegistration) {
+
+	}).Init(func(ctx lsha.Context, userBuilders []lsha.ModeInitUserBuilder) (ctxData any) {
+		mode := &oneOnOne{}
+		for _, builder := range userBuilders {
+			builder.BindData(&oneOnOnePlayer{})
+		}
+		return mode
+	}).NextTurn(nextTurn)
 }
 
-func buildOneOnOne() lsha.ModeBuilderV1[*OneOnOne] {
-	b := lsha.NewModeBuilder[*OneOnOne](ModeOneOnOne)
-	b.Description("")
-	b.LimitUserCount(2, 2)
-	b.OnCreate(func(e lsha.Engine, creator lsha.Player) *OneOnOne {
+type OneOnOneMode interface {
+	Mode
+}
 
-	})
+type OneOnOnePlayer interface {
+}
+type OneOnOneTurn interface {
+}
+type OneOnOnePhase interface {
+}
+type oneOnOne struct {
+}
 
-	return b
+func (o *oneOnOne) Init() any {
+	return o
+}
+
+type oneOnOnePlayer struct {
+}
+type oneOnOneTurn struct {
 }

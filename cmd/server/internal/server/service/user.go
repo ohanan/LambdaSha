@@ -1,9 +1,4 @@
-package core
-
-import (
-	"sync"
-	"sync/atomic"
-)
+package service
 
 func NewUser(id string) *User {
 	return &User{
@@ -20,4 +15,3 @@ type User struct {
 func (a *User) ID() string {
 	return a.id
 }
-

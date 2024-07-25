@@ -2,37 +2,42 @@ package lsha
 
 type (
 	ModeRoomConfigBuilder = func(roomConfigBuilder ConfigBuilder)
-	ModeStarter           = func(ctx Context) (ctxData any)
+	ModeInitializer       = func(ctx Context, userBuilders []ModeInitUserBuilder) (ctxData any)
+	PrepareUser           = func(order int, users User) (playerData any)
 	FuncModeNextTurn      = func(ctx Context, turnBuilder TurnBuilder)
-	FuncModeNextPlayer    = func(ctx Context, player Player)
 )
 type ModeRepository interface {
 	GetModeRegistration(name string) ModeRegistration
-	BuildModeDef(name string) ModeBuilder
+	BuildMode(f func(builder ModeBuilder))
 }
 
 type ModeRegistration interface {
 	SetHeroDef(h HeroDef)
 	DeleteHeroDef(name string)
 }
-
-type ModeLimit struct {
-	PlayerMinCount int
-	PlayerMaxCount int
-	UserValidator  func(account User) (reason string)
+type ModeInitUserBuilder interface {
+	User() User
+	Order() int
+	RewriteOrder(order int) ModeInitUserBuilder
+	BindData(data any) ModeInitUserBuilder
+}
+type ModeUserConfigBuilder interface {
+	MinPlayer(playerCount int) ModeUserConfigBuilder
+	MaxPlayer(playerCount int) ModeUserConfigBuilder
+	ValidUser(validator func(user User) (reason string)) ModeUserConfigBuilder
+	DisableRandomOrder() ModeUserConfigBuilder
 }
 type ModeBuilder interface {
-	Description(description string)
-	Limit(limit *ModeLimit)
-	WithModeRegistration(f func(registration ModeRegistration))
-	OnCreateConfig(f ModeRoomConfigBuilder)
-	OnStart(f ModeStarter)
-	OnNextTurn(f TurnStarter)
-	OnEvent(ctx Context, e Event, result Event)
+	Name(name string) ModeBuilder
+	Description(description string) ModeBuilder
+	UserConfig(builderInitializer func(builder ModeUserConfigBuilder)) ModeBuilder
+	ModeRegistration(f func(registration ModeRegistration)) ModeBuilder
+	OnCreateConfig(f ModeRoomConfigBuilder) ModeBuilder
+	Init(f ModeInitializer) ModeBuilder
+	NextTurn(f TurnStarter) ModeBuilder
 }
 type ConfigBuilder interface {
-	BindData(data any)
-	Data() any
+	DataHolder
 	Desc(desc string) ConfigDescOptionsBuilder
 	Checkbox(name string, tips string) ConfigCheckboxOptionsBuilder
 	Radio(name string, tips string) ConfigRadioOptionsBuilder

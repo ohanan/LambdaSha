@@ -3,16 +3,8 @@ package basic
 import "github.com/ohanan/LambdaSha/pkg/lsha"
 
 func Init(pb lsha.PluginBuilder) {
-	pb.Name(PluginName)
-	pb.Version(1)
-	pb.Description("")
-	pb.OnLoad(load)
-}
-
-func load(e lsha.ModeRepository) {
-	mb := e.BuildModeDef(ModeOneOnOne)
-	mb.Limit(&lsha.ModeLimit{
-		PlayerMinCount: 2,
-		PlayerMaxCount: 2,
-	})
+	pb.Name(PluginName).Version(Version).Description("this is mode for one-on-one").
+		OnLoad(func(r lsha.ModeRepository) {
+			r.BuildMode(initOneOnOne)
+		})
 }
